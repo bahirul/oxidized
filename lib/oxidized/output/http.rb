@@ -33,7 +33,7 @@ module Oxidized
           http.verify_mode = @cfg.ssl_verify? ? OpenSSL::SSL::VERIFY_PEER : OpenSSL::SSL::VERIFY_NONE
         end
 
-        headers = @cfg.headers? ? @cfg.headers : {}
+        headers = normalized_headers
 
         req = Net::HTTP::Post.new(uri.request_uri, headers.merge('Content-Type' => 'application/json'))
         req.basic_auth(@cfg.user, @cfg.password) if @cfg.user? && @cfg.password?
@@ -55,6 +55,37 @@ module Oxidized
       end
 
       private
+
+      def normalized_headers
+        return {} unless @cfg.headers?
+
+        headers = {}
+        @cfg.headers.each do |header, value|
+          next unless valid_header_entry?(header, value)
+
+          headers[header.to_s] = value.to_s
+        end
+        headers
+      end
+
+      def valid_header_entry?(header, value)
+        if header.to_s.match?(/[\r\n]/)
+          logger.warn "Skipping invalid HTTP output header #{header.inspect}: header names cannot include CR/LF"
+          return false
+        end
+
+        unless value.is_a?(String) || value.is_a?(Numeric) || value == true || value == false
+          logger.warn "Skipping invalid HTTP output header #{header.inspect}: value must be scalar"
+          return false
+        end
+
+        if value.to_s.match?(/[\r\n]/)
+          logger.warn "Skipping invalid HTTP output header #{header.inspect}: header values cannot include CR/LF"
+          return false
+        end
+
+        true
+      end
 
       def generate_json(node, outputs, opt)
         JSON.pretty_generate(
